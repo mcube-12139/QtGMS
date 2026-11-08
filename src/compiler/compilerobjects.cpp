@@ -145,6 +145,141 @@ QString CompilerBuild::actionCode(const QDomElement &event)
     return result;
 }
 
+QString CompilerBuild::sharkActionCode(const QDomElement &event)
+{
+    const auto actions = children(event, "action");
+    int index = 0;
+    bool relativeBaseline = false, relativeEnabled = false, foundRelative = false;
+    bool conditionDeclared = false;
+    for (const auto &entry : actions)
+        if (number(entry, "userelative") != 0) {
+            const bool value = number(entry, "relative") != 0;
+            if (!foundRelative) {
+                relativeBaseline = value;
+                foundRelative = true;
+            }
+            relativeEnabled = relativeEnabled || value;
+        }
+    std::function<QString()> action = [&]() -> QString {
+        if (index >= actions.size())
+            return QStringLiteral("{}\n");
+        const auto current = actions.at(index++);
+        const int kind = number(current, "kind");
+        if (kind == 1) {
+            QString block = "{\n";
+            while (index < actions.size() && number(actions.at(index), "kind") != 2)
+                block += action();
+            if (index >= actions.size())
+                throw CompileError(QStringLiteral("Unclosed DND action block"));
+            ++index;
+            return block + "}\n";
+        }
+        if (kind == 2 || kind == 3)
+            throw CompileError(QStringLiteral("Unexpected DND End / Else action"));
+        if (kind == 4)
+            return (relativeEnabled ? QStringLiteral("action_set_relative(0);\n") : QString())
+                + QStringLiteral("exit;\n");
+        const auto arguments = children(current.firstChildElement("arguments"), "argument");
+        QStringList values;
+        for (const auto &argument : arguments) {
+            QString value;
+            for (auto child = argument.firstChildElement(); !child.isNull(); child = child.nextSiblingElement())
+                if (child.tagName() != "kind") {
+                    value = child.text();
+                    break;
+                }
+            const int type = number(argument, "kind");
+            if (kind != 6 && kind != 7 && (type == 1 || type == 2) && !value.startsWith('"') && !value.startsWith('\'')) {
+                if (value.contains('"'))
+                    throw CompileError(QStringLiteral("DND string contains an unquoted double quote"));
+                value = '"' + value + '"';
+            }
+            // Variable assignments contain a raw lvalue and expression; Execute
+            // Code contains source text. Neither uses ordinary string arguments.
+            if (kind != 6 && kind != 7) {
+                if (value.isEmpty())
+                    value = "0";
+                if (value == "<undefined>")
+                    value = "-1";
+            }
+            values.append(value);
+        }
+        if (kind == 5)
+            return "repeat (" + values.value(0, "0") + ") " + action();
+        QString body;
+        if (kind == 6) {
+            if (values.size() != 2 || values.at(0).trimmed().isEmpty() || values.at(1).trimmed().isEmpty())
+                throw CompileError(QStringLiteral("DND Set Variable requires a variable and a value"));
+            body = text(current, "codestring") + values.at(0)
+                + (number(current, "relative") != 0 ? QStringLiteral(" += ") : QStringLiteral(" = "))
+                + values.at(1);
+        } else if (kind == 7)
+            body = values.value(0);
+        else if (number(current, "exetype") == 1) {
+            QString function = text(current, "functionname");
+            if (function.isEmpty())
+                throw CompileError(QStringLiteral("DND action has no function name"));
+            if (function == "action_execute_script") {
+                function = values.takeFirst();
+            }
+            body = function + "(" + values.join(",") + ")";
+        } else if (number(current, "exetype") == 2) {
+            body = text(current, "codestring");
+            for (int i = values.size() - 1; i >= 0; --i)
+                body.replace(QRegularExpression("\\bargument" + QString::number(i) + "\\b"), values.at(i));
+            if (body.isEmpty())
+                throw CompileError(QStringLiteral("DND action has no executable code"));
+        } else
+            return QStringLiteral("{}\n");
+        const bool relative = number(current, "userelative") != 0 && relativeEnabled
+            && (number(current, "relative") != 0) != relativeBaseline;
+        const QString prefix = relative
+            ? QStringLiteral("action_set_relative(%1);\n").arg(number(current, "relative") != 0 ? 1 : 0)
+            : QString();
+        const QString suffix
+            = relative ? QStringLiteral("action_set_relative(%1);\n").arg(relativeBaseline ? 1 : 0) : QString();
+        QString owner = text(current, "whoName", "self");
+        // Apply-to references use the same undefined-object sentinel as the
+        // original compiler; the XML marker itself is not a GML expression.
+        if (owner == QStringLiteral("<undefined>"))
+            owner = QStringLiteral("-100");
+        const bool apply = number(current, "useapplyto") != 0 && owner != "self";
+        if (number(current, "isquestion") != 0) {
+            // Evaluate the condition in its apply-to scope, then execute the body
+            // in the event's original scope, matching the action compiler.
+            const QString condition = "__b__";
+            QString evaluate = apply ? "with (" + owner + ") {\n" : QString();
+            if (!conditionDeclared) {
+                evaluate += "var " + condition + ";\n";
+                conditionDeclared = true;
+            }
+            evaluate += prefix + condition + "=(" + body + ");\n";
+            if (apply && owner != "other")
+                evaluate += "if (" + (number(current, "isnot") != 0 ? QStringLiteral("!") : QString()) + condition
+                    + ") break;\n";
+            evaluate += suffix;
+            if (apply)
+                evaluate += "}\n";
+            evaluate += "if (" + (number(current, "isnot") != 0 ? QStringLiteral("!") : QString()) + condition + ") "
+                + action();
+            if (index < actions.size() && number(actions.at(index), "kind") == 3) {
+                ++index;
+                evaluate += "else " + action();
+            }
+            return evaluate;
+        }
+
+        return body;
+    };
+    QString result
+        = relativeEnabled ? QStringLiteral("action_set_relative(%1);\n").arg(relativeBaseline ? 1 : 0) : QString();
+    while (index < actions.size())
+        result += action();
+    if (relativeEnabled)
+        result += "action_set_relative(0);\n";
+    return result;
+}
+
 static void writeCompiledAction(DataWriter &file, int code)
 {
     file.list(code < 0 ? 0 : 1, [&](int) {
@@ -240,6 +375,96 @@ void CompilerBuild::objects()
                         code("gml_Object_" + resource.node.name + "_" + QString::number(type) + "_"
                                 + QString::number(subtype),
                             actionCode(event)));
+                });
+            });
+        });
+    });
+}
+
+void CompilerBuild::sharkObjects()
+{
+    file.chunk("TMLN", [&] {
+        const auto &timelines = resources[ResourceType::Timeline];
+        file.list(timelines.size(), [&](int i) {
+            const auto &resource = timelines.at(i);
+            file.string(resource.node.name);
+            auto moments = children(resource.xml, "entry");
+            for (int m = moments.size() - 1; m >= 0; --m) {
+                if (moments.at(m).firstChildElement("event").firstChildElement("action").isNull())
+                    moments.removeAt(m);
+            }
+            file.u32(moments.size());
+            QVector<int> pointers;
+            for (const auto &moment : moments) {
+                file.u32(number(moment, "step"));
+                pointers.append(file.reserve());
+            }
+            for (int m = 0; m < moments.size(); ++m) {
+                file.patch(pointers.at(m), file.position());
+                const auto &moment = moments.at(m);
+                const QString source = actionCode(moment.firstChildElement("event"));
+                writeCompiledAction(file,
+                    code("gml_Timeline_" + resource.node.name + "_" + QString::number(number(moment, "step")), source));
+            }
+        });
+    });
+    file.chunk("OBJT", [&] {
+        const auto &objects = resources[ResourceType::Object];
+        file.list(objects.size(), [&](int i) {
+            const auto &resource = objects.at(i);
+            const auto &root = resource.xml;
+            file.string(resource.node.name);
+            file.u32(resourceId(ResourceType::Sprite, text(root, "spriteName")));
+            file.u32(number(root, "visible", 1) != 0);
+            file.u32(number(root, "solid") != 0);
+            file.u32(number(root, "depth"));
+            file.u32(number(root, "persistent") != 0);
+            file.u32(resourceId(ResourceType::Object, text(root, "parentName"), -100));
+            file.u32(resourceId(ResourceType::Sprite, text(root, "maskName")));
+            file.u32(number(root, "PhysicsObject") != 0);
+            file.u32(number(root, "PhysicsObjectSensor") != 0);
+            file.u32(number(root, "PhysicsObjectShape"));
+            file.f32(number(root, "PhysicsObjectDensity", 0.5));
+            file.f32(number(root, "PhysicsObjectRestitution", 0.1));
+            file.u32(number(root, "PhysicsObjectGroup"));
+            file.f32(number(root, "PhysicsObjectLinearDamping", 0.1));
+            file.f32(number(root, "PhysicsObjectAngularDamping", 0.1));
+            const auto points = children(root.firstChildElement("PhysicsShapePoints"), "point");
+            file.u32(points.size());
+            file.f32(number(root, "PhysicsObjectFriction", 0.2));
+            file.u32(number(root, "PhysicsObjectAwake", 1) != 0);
+            file.u32(number(root, "PhysicsObjectKinematic") != 0);
+            for (const auto &point : points) {
+                const auto values = point.text().split(',');
+                if (values.size() != 2)
+                    throw CompileError(resource.node.name + ": invalid physics vertex");
+                file.f32(values.at(0).toFloat());
+                file.f32(values.at(1).toFloat());
+            }
+            QMap<int, QVector<QDomElement>> events;
+            for (const auto &event : children(root.firstChildElement("events"), "event")) {
+                // An absent handler must not override an inherited event with an empty action list.
+                if (event.firstChildElement("action").isNull()) continue;
+                const int type = attribute(event, "eventtype");
+                if (type < 0 || type > 11)
+                    throw CompileError(resource.node.name + ": unsupported event type");
+                events[type].append(event);
+            }
+            file.list(12, [&](int type) {
+                const auto &entries = events[type];
+                file.list(entries.size(), [&](int e) {
+                    const auto &event = entries.at(e);
+                    int subtype = type == 4 ? resourceId(ResourceType::Object, event.attribute("ename"))
+                                            : attribute(event, "enumb");
+                    file.u32(subtype);
+                    QString name = QString("gml_Object_%1_%2_%3").arg(
+                        resource.node.name,
+                        QString::number(type),
+                        QString::number(subtype)
+                    );
+                    QString content = QString("function %1() {\n%2\n}").arg(name, sharkActionCode(event));
+                    writeCompiledAction(file,
+                        code(name, content));
                 });
             });
         });

@@ -22,5 +22,7 @@ class ProjectCompiler
 public:
     static CompileResult compile(
         const CompileRequest &request, const std::function<void(const QString &, int, int)> &progress);
+    static CompileResult compileShark(
+        const CompileRequest &request, const std::function<void(const QString &, int, int)> &progress);
 };
 #endif

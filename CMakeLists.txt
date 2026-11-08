@@ -47,9 +47,13 @@ add_library(qtgmscompiler STATIC
     src/compiler/runnericon.cpp
     src/compiler/runnerversion.cpp
     src/compiler/compilejob.cpp
+    src/compiler/compilesharkjob.cpp
     src/compiler/compilercache.cpp
     src/compiler/fasthash.cpp
     src/compiler/shadercompiler.cpp
+    src/compiler/sharkbackend.cpp
+    src/compiler/shark/compiler.cpp
+    src/compiler/shark/intermediate/program.cpp
 )
 target_link_libraries(qtgmscompiler PUBLIC Qt5::Widgets Qt5::Xml qtgmsaudio qtgmsvorbis qtgmslame qtgmsangle qtgmsxxhash)
 target_include_directories(qtgmscompiler PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/src")

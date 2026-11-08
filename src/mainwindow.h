@@ -51,7 +51,9 @@ private:
     void manageConfigurations();
     void processTreeCommand(const ResourceTreeRequest &request);
     bool compileProject();
+    bool compileSharkProject();
     void runProject();
+    void runSharkProject();
     bool stopGame();
     void cleanBuild();
     void updateBuildActions();
@@ -99,6 +101,7 @@ private:
     GameRunner *m_gameRunner;
     QAction *m_buildAction = nullptr;
     QAction *m_runAction = nullptr;
+    QAction *m_runSharkAction = nullptr;
     QAction *m_stopAction = nullptr;
     QAction *m_cleanAction = nullptr;
     bool m_fileDropPending = false;

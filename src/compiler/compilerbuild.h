@@ -47,6 +47,7 @@ struct CompilerBuild
     void general();
     void assets(CompileProfile &profile, const std::function<void(const QString &)> &progress);
     void objects();
+    void sharkObjects();
     void rooms(CompileProfile &profile);
     void extensions();
     void includeExtensionScript(const QString &functionName);
@@ -56,6 +57,7 @@ struct CompilerBuild
     int resourceId(ResourceType type, const QString &name, int absent = -1) const;
     int option(const char *key, int fallback = 0) const;
     QString actionCode(const QDomElement &event);
+    QString sharkActionCode(const QDomElement &event);
     void external(const QString &name, const QByteArray &bytes);
     void externalData(const QString &name, const std::function<void(DataWriter &)> &write);
     void externalFile(const QString &name, const QString &sourcePath);

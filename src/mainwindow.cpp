@@ -851,9 +851,12 @@ void MainWindow::createMenusAndToolbar()
             addUnavailableAction(scriptsMenu, command);
     }
 
-    m_runAction = runMenu->addAction(QIcon(QStringLiteral(":/images/run.png")), tr("&Run normally"));
+    QIcon runIcon = QIcon(QStringLiteral(":/images/run.png"));
+    m_runAction = runMenu->addAction(runIcon, tr("&Run normally"));
     m_runAction->setShortcut(QKeySequence(Qt::Key_F5));
     connect(m_runAction, &QAction::triggered, this, &MainWindow::runProject);
+    m_runSharkAction = runMenu->addAction(runIcon, tr("Run shark"));
+    connect(m_runSharkAction, &QAction::triggered, this, &MainWindow::runSharkProject);
     QAction *debugAction = addUnavailableAction(runMenu, tr("Run in &Debug mode"),
         QStringLiteral("debug"), QKeySequence(Qt::Key_F6));
     m_stopAction = runMenu->addAction(QIcon(QStringLiteral(":/images/stop.png")), tr("&Stop"));
@@ -900,7 +903,7 @@ void MainWindow::createMenusAndToolbar()
     toolbar->addSeparator();
     toolbar->addAction(m_buildAction);
     toolbar->addSeparator();
-    toolbar->addActions({m_runAction, debugAction, m_stopAction, m_cleanAction});
+    toolbar->addActions({m_runAction, m_runSharkAction, debugAction, m_stopAction, m_cleanAction});
     toolbar->addSeparator();
     toolbar->addActions(resourceActions);
     toolbar->addSeparator();
