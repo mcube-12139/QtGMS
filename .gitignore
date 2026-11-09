@@ -2,3 +2,4 @@
 /CMakeUserPresets.json
 /.qtcreator/
 *.user
+/.vs/

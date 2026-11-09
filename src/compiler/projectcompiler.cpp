@@ -328,11 +328,15 @@ CompileResult ProjectCompiler::compileShark(
             vector<SourceFile> files;
             files.reserve(build.codes.length());
             for (const VmCode& code: build.codes) {
-                files.emplace_back(code.name.toStdU16String(), code.source.toStdU16String());
+                files.emplace_back(code.name.toStdString(), code.source.toStdString());
             }
 
-            unique_ptr<Program> program = Shark::compile(files);
-            generateProgram(*program, build.codes, build.file);
+            try {
+                unique_ptr<Program> program = Shark::compile(files);
+                generateProgram(*program, build.codes, build.file);
+            } catch (const char *err) {
+                qDebug(err);
+            }
 
             build.scripts();
             build.resources.clear();

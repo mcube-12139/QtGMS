@@ -4,11 +4,13 @@
 #include <string>
 
 namespace Shark {
+    using std::string;
+
     struct SourceFile {
-        SourceFile(std::u16string name, std::u16string content)
+        SourceFile(string name, string content)
             : name(name), content(content) { }
-        std::u16string name;
-        std::u16string content;
+        string name;
+        string content;
     };
 }
 
